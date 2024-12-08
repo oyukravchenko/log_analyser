@@ -29,6 +29,6 @@ jobs: # jobs. We will have two jobs (test and publish) with multiple steps.
       - name: Linter
         run: poetry run make lint 
       - name: Test
-        run: poetry runmake test
+        run: poetry run make test
       - name: Test with coverage
         run:  poetry run make test-cov
