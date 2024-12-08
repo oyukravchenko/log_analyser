@@ -338,4 +338,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args)
+    try:
+
+        main(args)
+    except Exception:
+        logger.error("Log analyzer failed due to error: ", exc_info=True)
+        sys.exit(1)
