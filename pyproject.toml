@@ -16,6 +16,10 @@ pre-commit = "^4.0.1"
 isort = "^5.13.2"
 black = "^24.10.0"
 mypy = "^1.13.0"
+pytest = "^8.3.4"
+
+[tool.isort]
+profile = "black"
 
 [build-system]
 requires = ["poetry-core"]

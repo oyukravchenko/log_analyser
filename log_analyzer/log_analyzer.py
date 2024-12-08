@@ -199,7 +199,7 @@ def mediana(values: list[float]) -> float:
         return 0
 
     s_values = sorted(values)
-    return s_values[int(len(s_values) / 2)]
+    return s_values[len(s_values) // 2]
 
 
 def _copy_report_resources(report_dir: str, resources: list[str]):
