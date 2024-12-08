@@ -3,26 +3,29 @@
 #                     '"$http_user_agent" "$http_x_forwarded_for" "$http_X_REQUEST_ID" "$http_X_RB_USER" '
 #                     '$request_time';
 
+import gzip
+import json
+import os
+import re
+import shutil
+import sys
 from argparse import ArgumentParser
 from collections import namedtuple
 from datetime import date, datetime
-import gzip
-import json
-import structlog
-import os
 from pathlib import Path
-import re
-import sys
 from typing import Generator
 
+import structlog
 
 logger = structlog.get_logger()
 
 
-config = {"REPORT_SIZE": 1000,
-          "REPORT_DIR": "./reports",
-          "LOG_DIR": "./log",
-          "REGISTRY_FILE": ".processed.txt" }
+config: dict[str, str] = {
+    "REPORT_SIZE": "1000",
+    "REPORT_DIR": "./reports",
+    "LOG_DIR": "./log",
+    "REGISTRY_FILE": ".processed.txt",
+}
 
 LogEntry = namedtuple(
     "LogEntry",
@@ -43,10 +46,10 @@ LogEntry = namedtuple(
     ],
 )
 
-LogFile = namedtuple('LogFile', "file date")
+LogFile = namedtuple("LogFile", "file date")
 
 
-def parse_config(file_path: str, default: dict) -> dict | None:
+def parse_config(file_path: str, default: dict[str, str]) -> dict | None:
     """
     Read and parse config file. Use default params from default config if them skipped in user config
 
@@ -59,16 +62,16 @@ def parse_config(file_path: str, default: dict) -> dict | None:
 
         with open(file_path, "rt", encoding="utf8") as config_file:
             lines = config_file.readlines()
-            user_config = dict()
+            user_config: dict[str, str | int] = dict()
 
             for line in lines:
-                param = line.split("=")
+                param_value = line.split("=")
 
-                if len(param) < 2:
+                if len(param_value) < 2:
                     logger.error("Wrong format for line %s", line)
                     return None
 
-                user_config[param[0].strip()] = param[1].strip()
+                user_config[param_value[0].strip()] = param_value[1].strip()
 
             for param, value in default.items():
                 if not user_config.get(param):
@@ -91,7 +94,7 @@ def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
     """
     processed_logs = []
     if os.path.exists(registry_file):
-        with open(registry_file, mode='rt', encoding='utf-8') as reg_file:
+        with open(registry_file, mode="rt", encoding="utf-8") as reg_file:
             processed_logs = [line.strip() for line in reg_file.readlines()]
 
     log_file_pttn = re.compile("^nginx-access-ui.log-[\d]{8}(.gz)*$")
@@ -114,9 +117,9 @@ def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
 
         log_date = log_file.replace(".gz", "")[-8:]
         if date_pattern.match(log_date):
-            log_date = datetime.strptime(log_date, "%Y%m%d")
-            if log_date > max_date:
-                max_date = log_date
+            log_date_d = datetime.strptime(log_date, "%Y%m%d")
+            if log_date_d > max_date:
+                max_date = log_date_d
                 last_log_file = log_file
         else:
             logger.error(
@@ -132,12 +135,11 @@ def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
         )
         return None
 
-    logger.info("Found last log file %s to process in log dir %s", last_log_file, log_dir)
+    logger.info(
+        "Found last log file %s to process in log dir %s", last_log_file, log_dir
+    )
 
-    return LogFile(
-        file=os.path.join(log_dir, last_log_file),
-        date=max_date
-        )
+    return LogFile(file=os.path.join(log_dir, last_log_file), date=max_date)
 
 
 def log_parser(log_file) -> Generator[LogEntry, None, None]:
@@ -153,7 +155,7 @@ def log_parser(log_file) -> Generator[LogEntry, None, None]:
             parts = [p for p in log_line.split(" ") if p != ""]
 
             log_values = []
-            multiword_value = []
+            multiword_value: list[str] = []
 
             for part in parts:
                 if (
@@ -189,7 +191,7 @@ def log_parser(log_file) -> Generator[LogEntry, None, None]:
             )
 
 
-def mediana(values: float) -> float:
+def mediana(values: list[float]) -> float:
     """
     Return mediane value of values list
     """
@@ -198,6 +200,20 @@ def mediana(values: float) -> float:
 
     s_values = sorted(values)
     return s_values[int(len(s_values) / 2)]
+
+
+def _copy_report_resources(report_dir: str, resources: list[str]):
+    """
+    Copy resources necessary for reports. Ex.: js lib files
+    :report_dir: directory with generated repors where resources files will be copied
+    :resources: list of files in 'resources' directory
+    """
+    for resource in resources:
+        resource_file = os.path.join("resources/", resource)
+        target_file = os.path.join(report_dir, os.path.basename(resource))
+        if not os.path.exists(resource_file):
+            shutil.copy(resource_file, target_file)
+            logger.info("Copied resource file %s into %s", resource_file, target_file)
 
 
 def write_report(
@@ -209,8 +225,9 @@ def write_report(
     """
     Parse log file with log_parser and generate html report which is placed into report_dir
     """
-    total_counters = {"count": 0, "time_sum": 0}
-    url_counters = dict()
+    total_counters = {"count": 0, "time_sum": 0.0}
+    url_counters: dict[str, dict[str, int | float]] = dict()
+    url_req_times: dict[str, list[float]] = dict()
 
     logger.info("Start parsing log")
 
@@ -220,16 +237,12 @@ def write_report(
 
         _, url = log_line.request.split(" ")[:2]
         if not url_counters.get(url):
-            url_counters[url] = {
-                "count": 0,
-                "time_sum": 0,
-                "time_max": 0,
-                "req_times": [],
-            }
+            url_counters[url] = {"count": 0, "time_sum": 0, "time_max": 0}
+            url_req_times[url] = []
 
         url_counters[url]["count"] += 1
         url_counters[url]["time_sum"] += float(log_line.request_time)
-        url_counters[url]["req_times"].append(float(log_line.request_time))
+        url_req_times[url].append(float(log_line.request_time))
 
         if url_counters[url]["time_max"] < float(log_line.request_time):
             url_counters[url]["time_max"] = float(log_line.request_time)
@@ -251,7 +264,7 @@ def write_report(
                 ),
                 "time_avg": round(counters["time_sum"] / counters["count"], 3),
                 "time_max": counters["time_max"],
-                "time_med": mediana(counters["req_times"]),  # TODO: calculate time_med
+                "time_med": mediana(url_req_times[url]),
                 "time_perc": round(
                     counters["time_sum"] / total_counters["time_sum"] * 100, 3
                 ),
@@ -263,23 +276,24 @@ def write_report(
     report_full_path = os.path.join(report_dir, report_file_name)
 
     with open(
-        "log_analyzer/resources/templates/report.html", "r", encoding="utf-8"
+        "./resources/templates/report.html", "r", encoding="utf-8"
     ) as template_file:
         from string import Template
-        html_content = Template(template_file.read())
-        html_content = html_content.safe_substitute(table_json=json.dumps(table_data))
 
-    # html_content = re.sub(r"\$table_json", json.dumps(table_data), html_content)
+        template = Template(template_file.read())
+        html_content = template.safe_substitute(table_json=json.dumps(table_data))
 
     with open(report_full_path, "w", encoding="utf-8") as report_file:
         report_file.write(html_content)
+
+    _copy_report_resources(report_dir, ["js/jquery.tablesorter.min.js"])
 
     logger.info("Created report %s", report_file_name)
 
 
 def mark_as_processed(log_file: str, registry_file: str):
-    with open(registry_file, mode='a+', encoding='utf-8') as file:
-        file.write('\n')
+    with open(registry_file, mode="a+", encoding="utf-8") as file:
+        file.write("\n")
         file.write(os.path.basename(log_file))
 
 
@@ -296,16 +310,20 @@ def main(args):
     last_log_file = get_last_log_file(user_config["LOG_DIR"], registry_file)
 
     if not last_log_file:
-        logger.info("No log files was found in %s for processing", user_config["LOG_DIR"])
+        logger.info(
+            "No log files was found in %s for processing", user_config["LOG_DIR"]
+        )
         sys.exit(0)
-    
 
     log_parser_gen = log_parser(last_log_file.file)
 
     write_report(
-        log_parser_gen, last_log_file.date, user_config["REPORT_DIR"], user_config["REPORT_SIZE"]
+        log_parser_gen,
+        last_log_file.date,
+        user_config["REPORT_DIR"],
+        user_config["REPORT_SIZE"],
     )
- 
+
     mark_as_processed(last_log_file.file, registry_file)
 
 
