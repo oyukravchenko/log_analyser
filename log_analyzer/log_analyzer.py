@@ -97,14 +97,14 @@ def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
         with open(registry_file, mode="rt", encoding="utf-8") as reg_file:
             processed_logs = [line.strip() for line in reg_file.readlines()]
 
-    log_file_pttn = re.compile("^nginx-access-ui.log-[\d]{8}(.gz)*$")
+    log_file_pttn = re.compile(r"^nginx-access-ui.log-[\d]{8}(.gz)*$")
     log_files = [
         f.name
         for f in Path(log_dir).iterdir()
         if not f.is_dir() and log_file_pttn.match(f.name)
     ]
 
-    date_pattern = re.compile("\d{8}")
+    date_pattern = re.compile(r"\d{8}")
     # max_date = datetime.strptime("19700101", "%Y%m%d")
     max_date = datetime.min
 
