@@ -129,7 +129,7 @@ def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
             return None
 
     if not last_log_file:
-        logger.error(
+        logger.info(
             "Logs file not found. Expected .gz files or files with no extension \
                      with name like 'nginx-access-ui.log-yyyymmdd"
         )
@@ -332,7 +332,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c",
         "--config",
-        default="./config",
+        default="./local.config",
         help="Path to config file. Default is ./config. Format: list of rows key=value",
     )
 

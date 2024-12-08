@@ -1,4 +1,8 @@
 __pycache__/
 **/.DS_Store
-.data/log/*
-.data/reports/*
+data/log/*
+!data/log/nginx-access-ui.log-20240730
+data/reports/*
+!data/reports/report-2024.07.30.html
+.vscode/launch.json
+.coverage
