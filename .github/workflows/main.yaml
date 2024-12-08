@@ -26,13 +26,9 @@ jobs: # jobs. We will have two jobs (test and publish) with multiple steps.
           poetry-version: 1.8.4
       - name: Install dependencies # install all dependencies
         run: poetry install
-      - name: Activate virtualenv
-        run: |
-          . .venv/bin/activate
-          echo PATH=$PATH >> $GITHUB_ENV
       - name: Linter
-        run: make lint
+        run: poetry run make lint 
       - name: Test
-        run: make test
+        run: poetry runmake test
       - name: Test with coverage
-        run:  make test-cov
+        run:  poetry run make test-cov
