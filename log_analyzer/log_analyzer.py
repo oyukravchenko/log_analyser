@@ -57,9 +57,8 @@ def parse_config(file_path: str, default: dict[str, str]) -> dict | None:
     :param default: default config as dict
     :return: dict config or None in case of errors
     """
+    logger.info("Try readind config file %s", file_path)
     try:
-        logger.info("Try readind config file %s", file_path)
-
         with open(file_path, "rt", encoding="utf8") as config_file:
             lines = config_file.readlines()
             user_config: dict[str, str | int] = dict()
