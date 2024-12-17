@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 from collections import namedtuple
 from datetime import date, datetime
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
 
 import structlog
 
@@ -24,7 +24,6 @@ config: dict[str, str] = {
     "REPORT_SIZE": "1000",
     "REPORT_DIR": "./reports",
     "LOG_DIR": "./log",
-    "REGISTRY_FILE": ".processed.txt",
 }
 
 LogEntry = namedtuple(
@@ -57,7 +56,7 @@ def parse_config(file_path: str, default: dict[str, str]) -> dict | None:
     :param default: default config as dict
     :return: dict config or None in case of errors
     """
-    logger.info("Try readind config file %s", file_path)
+    logger.info("Try reading config file %s", file_path)
     try:
         with open(file_path, "rt", encoding="utf8") as config_file:
             lines = config_file.readlines()
@@ -84,17 +83,40 @@ def parse_config(file_path: str, default: dict[str, str]) -> dict | None:
         return None
 
 
-def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
+def extract_date(source_string: str, pattern: re.Pattern) -> Optional[str]:
+    """
+    Exctract date from string according to date pattern.
+    Return None if date not found in source string and list of dates like "yyyymmdd"
+    """
+    match = re.search(pattern, source_string)
+    if match:
+        return f"{match.group(1)}{match.group(2)}{match.group(3)}"
+    else:
+        return None
+
+
+def get_reports_dates(report_dir: str) -> list[str]:
+    """
+    Return list of dates from reports file names
+    """
+    report_name_pattern = re.compile(r"^report-(\d{4})\.(\d{2})\.(\d{2})\.html")
+    date_pattern = re.compile(r"(\d{4})\.(\d{2})\.(\d{2})")
+    reports_dates = [
+        extract_date(f.name, date_pattern)
+        for f in Path(report_dir).iterdir()
+        if not f.is_dir() and report_name_pattern.match(f.name)
+    ]
+    return [d for d in reports_dates if d]
+
+
+def get_last_log_file(log_dir: str, report_dir: str) -> LogFile | None:
     """
     Return name of last log file base on date in file name
     : log_dir: directory where to search log files
-    : registry_file: file where processed log file names are stored
+    : report_dir: directory where reports are stored
     : return:  LogFile | None. None in case of error
     """
-    processed_logs = []
-    if os.path.exists(registry_file):
-        with open(registry_file, mode="rt", encoding="utf-8") as reg_file:
-            processed_logs = [line.strip() for line in reg_file.readlines()]
+    report_dates = get_reports_dates(report_dir)
 
     log_file_pttn = re.compile(r"^nginx-access-ui.log-[\d]{8}(.gz)*$")
     log_files = [
@@ -104,17 +126,18 @@ def get_last_log_file(log_dir: str, registry_file: str) -> LogFile | None:
     ]
 
     date_pattern = re.compile(r"\d{8}")
-    # max_date = datetime.strptime("19700101", "%Y%m%d")
     max_date = datetime.min
 
     last_log_file = None
 
     for log_file in log_files:
-        if log_file in processed_logs:
+
+        log_date = log_file.replace(".gz", "")[-8:]
+        # check is logs already processed
+        if log_date in report_dates:
             logger.debug("Log file %s had already been processed", log_file)
             continue
 
-        log_date = log_file.replace(".gz", "")[-8:]
         if date_pattern.match(log_date):
             log_date_d = datetime.strptime(log_date, "%Y%m%d")
             if log_date_d > max_date:
@@ -290,12 +313,6 @@ def write_report(
     logger.info("Created report %s", report_file_name)
 
 
-def mark_as_processed(log_file: str, registry_file: str):
-    with open(registry_file, mode="a+", encoding="utf-8") as file:
-        file.write("\n")
-        file.write(os.path.basename(log_file))
-
-
 def main(args):
     user_config = parse_config(args.config, default=config)
 
@@ -304,9 +321,7 @@ def main(args):
             f"Error: can't read config file {args.config}. Please check path and format"
         )
 
-    registry_file = os.path.join(user_config["LOG_DIR"], user_config["REGISTRY_FILE"])
-
-    last_log_file = get_last_log_file(user_config["LOG_DIR"], registry_file)
+    last_log_file = get_last_log_file(user_config["LOG_DIR"], user_config["REPORT_DIR"])
 
     if not last_log_file:
         logger.info(
@@ -322,8 +337,6 @@ def main(args):
         user_config["REPORT_DIR"],
         user_config["REPORT_SIZE"],
     )
-
-    mark_as_processed(last_log_file.file, registry_file)
 
 
 if __name__ == "__main__":
